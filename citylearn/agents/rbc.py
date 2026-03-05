@@ -827,3 +827,191 @@ class PITemperatureController(RBC):
         self.next_time_step()
 
         return actions
+    
+
+class PIDTemperatureController(RBC):
+    """PID temperature controller for CityLearn buildings."""
+
+    def __init__(
+        self,
+        env: CityLearnEnv,
+        kp: float = 0.15,
+        ki: float = 0.002,
+        kd: float = 0.2,
+        temp_deadband: float = 0.5,
+        integral_limit: float = 10.0,
+        min_power: float = 0.0,
+        max_power: float = 1.0,
+        storage_action_map=None,
+        **kwargs,
+    ):
+        super().__init__(env, **kwargs)
+
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+
+        self.temp_deadband = temp_deadband
+        self.integral_limit = integral_limit
+        self.min_power = min_power
+        self.max_power = max_power
+        self.storage_action_map = storage_action_map
+
+        # controller memory
+        self.integral_errors = {}
+        self.prev_errors = {}
+
+    # ------------------------------------------------------------------
+    # Reset controller state
+    # ------------------------------------------------------------------
+    def reset(self):
+        super().reset()
+        self.integral_errors = {}
+        self.prev_errors = {}
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _key(self, building_idx: int, device: str) -> str:
+        return f"{building_idx}_{device}"
+
+    def _pid(self, error: float, key: str) -> float:
+        """Compute PID action scaled to [min_power, max_power]."""
+
+        # Deadband → no control & reset integral
+        if abs(error) <= self.temp_deadband:
+            self.integral_errors[key] = 0.0
+            self.prev_errors[key] = error
+            return 0.0
+
+        # initialize memory
+        self.integral_errors.setdefault(key, 0.0)
+        self.prev_errors.setdefault(key, error)
+
+        # ----- P -----
+        p = self.kp * error
+
+        # ----- I (anti-windup) -----
+        self.integral_errors[key] += error
+        self.integral_errors[key] = max(
+            min(self.integral_errors[key], self.integral_limit),
+            -self.integral_limit,
+        )
+        i = self.ki * self.integral_errors[key]
+
+        # ----- D -----
+        d_error = error - self.prev_errors[key]
+        d = self.kd * d_error
+        self.prev_errors[key] = error
+
+        # PID sum
+        u = p + i + d
+
+        # scale & clamp
+        if u > 0:
+            action = self.min_power + u * (self.max_power - self.min_power)
+            action = max(min(action, self.max_power), self.min_power)
+        else:
+            action = 0.0
+
+        return action
+
+    # ------------------------------------------------------------------
+    # Main control logic
+    # ------------------------------------------------------------------
+    def predict(self, observations, deterministic: bool = None):
+        actions = []
+
+        for b_idx, (a_names, o_names, obs) in enumerate(
+            zip(self.action_names, self.observation_names, observations)
+        ):
+            building_actions = []
+
+            # ----------------------------------------------
+            # Extract observations
+            # ----------------------------------------------
+            indoor = None
+            cool_sp = 24.0
+            heat_sp = 20.0
+            hour = None
+
+            for i, name in enumerate(o_names):
+                if name == "indoor_dry_bulb_temperature":
+                    indoor = obs[i]
+                elif name == "indoor_dry_bulb_temperature_cooling_set_point":
+                    cool_sp = obs[i]
+                elif name == "indoor_dry_bulb_temperature_heating_set_point":
+                    heat_sp = obs[i]
+                elif name == "hour":
+                    hour = obs[i]
+
+            # ----------------------------------------------
+            # Loop through action dimensions
+            # ----------------------------------------------
+            for act in a_names:
+
+                # -------- Electrical storage --------
+                if "electrical_storage" in act:
+                    if hour is not None and 6 <= hour <= 14:
+                        val = 0.11
+                    else:
+                        val = -0.067
+                    building_actions.append(val)
+
+                # -------- Thermal / generic storage --------
+                elif "storage" in act:
+                    if hour is not None:
+                        if 9 <= hour <= 21:
+                            val = -0.08
+                        else:
+                            val = 0.091
+                    else:
+                        val = 0.0
+                    building_actions.append(val)
+
+                # -------- Cooling device --------
+                elif act == "cooling_device" and indoor is not None:
+                    error = indoor - cool_sp
+                    key = self._key(b_idx, "cool")
+                    building_actions.append(self._pid(error, key))
+
+                # -------- Heating device --------
+                elif act == "heating_device" and indoor is not None:
+                    error = heat_sp - indoor
+                    key = self._key(b_idx, "heat")
+                    building_actions.append(self._pid(error, key))
+
+                # -------- Combined device --------
+                elif act == "cooling_or_heating_device" and indoor is not None:
+                    cool_err = indoor - cool_sp
+                    heat_err = heat_sp - indoor
+
+                    cool_key = self._key(b_idx, "coolheat_cool")
+                    heat_key = self._key(b_idx, "coolheat_heat")
+
+                    if cool_err > self.temp_deadband:
+                        self.integral_errors[heat_key] = 0.0
+                        val = -self._pid(cool_err, cool_key)
+
+                    elif heat_err > self.temp_deadband:
+                        self.integral_errors[cool_key] = 0.0
+                        val = self._pid(heat_err, heat_key)
+
+                    else:
+                        self.integral_errors[cool_key] = 0.0
+                        self.integral_errors[heat_key] = 0.0
+                        self.prev_errors[cool_key] = 0.0
+                        self.prev_errors[heat_key] = 0.0
+                        val = 0.0
+
+                    building_actions.append(val)
+
+                # -------- Unknown --------
+                else:
+                    building_actions.append(0.0)
+
+            actions.append(building_actions)
+
+        self.actions = actions
+        self.next_time_step()
+        return actions
