@@ -1,0 +1,18 @@
+controller: mpc
+name: occupant_adaptive_rc_mpc
+horizon: 24
+action_bounds:
+  lower: 0.0
+  upper: 1.0
+weights:
+  energy: 1.0
+  comfort: 1.0
+  peak: 0.0
+regularization:
+  lambda_u: 0.001
+  lambda_du: 0.0
+  use_smooth_du: false
+constraints:
+  cold_penalty: 100000.0
+  hot_penalty: 1000.0
+

@@ -168,6 +168,10 @@ cython_debug/
 # MacOS
 .DS_Store
 
+# Local Codex workspace state
+.codex
+.codex/
+
 # do not track docs for now
 docs/build/*
 docs/_build/*
@@ -186,6 +190,21 @@ render_logs/
 SimulationData/
 results/
 
+# Generated training artifacts from exploratory notebook runs.
+# Keep curated source notebooks/scripts in git, but do not accidentally add
+# large replay buffers or one-off trained agents from `notebooks/`.
+notebooks/*_replay.pkl
+notebooks/*.pkl
+notebooks/*_dataset*.npz
+notebooks/*_comfort_raw.npz
+notebooks/*_bias_*.csv
+notebooks/sac_*.zip
+notebooks/ibex_offline_pretrained_occ*.pt
+notebooks/occ_bias_mlp_*.pt
+notebooks/current_mpc_comfort.png
+notebooks/new_mpc_comfort.png
+notebooks/*.disk_backup_*.ipynb
+
 # --- My ignored files ---
 src/pre-processing/
 src/simulations/simulate.py
@@ -199,6 +218,4 @@ outputs/
 
 ## Ignore workflows  ---
 .github/workflows/
-
-
 

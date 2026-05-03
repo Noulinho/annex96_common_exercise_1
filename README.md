@@ -1,5 +1,46 @@
 # IEA EBC Annex 96: Common Exercise 1
 
+## Controller Experiment Structure
+
+This workspace now separates the occupant-adaptive control work from scratch
+notebooks, following the reproducible pattern used by MERLIN-style experiment
+repos:
+
+- `configs/`: building, controller, and scenario definitions.
+- `src/`: reusable environment, model, occupant, controller, evaluation, and plotting code.
+- `scripts/`: command-line entry points for fitting, running, and summarizing experiments.
+- `analysis/`: clean notebooks for result inspection and figures.
+- `results/`: generated rollouts, summaries, and fitted models.
+- `archive/`: old scratch notebooks and exploratory artifacts.
+
+The controller comparison is organized around this matrix:
+
+| Controller | `no_occupant` | `occupant_present` | `occupant_present_peak_flattening` |
+|---|---:|---:|---:|
+| RBC | planned | planned | optional |
+| MPC | in progress | in progress | planned |
+| RL | in progress | in progress | planned |
+| RLMPC / Gnu-RL | in progress | in progress | planned |
+
+The cleaned name for the MPC line of work is:
+
+**Occupant-Adaptive RC-MPC with B-spline Dynamic Comfort Preferences**
+
+See [`docs/mpc_cleanup_plan.md`](docs/mpc_cleanup_plan.md) for the migration map
+from `notebooks/my_mpc.ipynb` into the new structure.
+
+For the Gnu-RL style RLMPC work, see
+[`docs/rlmpc_cleanup_plan.md`](docs/rlmpc_cleanup_plan.md). That track is:
+
+**Gnu-RL style RLMPC with Offline DiffMPC Imitation and Online Cost Optimization**
+
+Its pipeline is:
+
+1. learn DiffMPC RC/dynamics parameters offline from January imitation data,
+2. freeze the learned dynamics,
+3. optimize online cost parameters in February,
+4. add occupant-specific persistent `T_dyn` comfort references for occupant experiments.
+
 ## Instructions (December 12, 2025)
 
 ---

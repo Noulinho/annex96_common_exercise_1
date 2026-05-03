@@ -1,0 +1,20 @@
+scenarios:
+  no_occupant:
+    occupant_enabled: false
+    dynamic_comfort_enabled: false
+    peak_flattening_enabled: false
+    peak_weight: 0.0
+
+  occupant_present:
+    occupant_enabled: true
+    dynamic_comfort_enabled: true
+    peak_flattening_enabled: false
+    peak_weight: 0.0
+
+  occupant_present_peak_flattening:
+    occupant_enabled: true
+    dynamic_comfort_enabled: true
+    peak_flattening_enabled: true
+    peak_weight: 0.1
+    status: planned
+

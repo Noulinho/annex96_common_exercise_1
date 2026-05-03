@@ -1,0 +1,72 @@
+controller: rlmpc
+name: gnu_rl_style_diffmpc
+aliases:
+  - Gnu-RL
+  - RLMPC
+
+diffmpc:
+  horizon: 24
+  eta: 10.0
+  rho_u: 1.0
+  dt: 1.0
+  action_bounds:
+    lower: 0.0
+    upper: 1.0
+  cop_bounds:
+    lower: 0.5
+    upper: 6.0
+
+offline_imitation:
+  train_period: january
+  objective: imitate_reference_actions_and_next_temperature
+  learns:
+    - C
+    - Rm
+    - Rout
+    - Aeff
+    - Pnom
+    - Tm
+    - cop_a
+    - cop_b
+    - q_track
+    - r_u
+    - sp_bias
+  outputs:
+    checkpoint_dir: results/models/rlmpc/offline
+    bundle_dir: results/models/rlmpc/bundles
+
+online_optimization:
+  test_period: february
+  update_frequency_hours: 168
+  optimizer: ppo
+  learns:
+    - q_track
+    - r_u
+    - sp_bias
+  frozen_after_offline:
+    - C
+    - Rm
+    - Rout
+    - Aeff
+    - Pnom
+    - Tm
+    - cop_a
+    - cop_b
+
+occupant_tdyn:
+  enabled: true
+  init_mode: schedule
+  delta_up: 0.5
+  delta_down: 0.5
+  drift_to_pref: 0.0
+  bounds:
+    lower: 18.0
+    upper: 26.0
+  variants:
+    feedback_only:
+      description: "Paper-style persistent T_dyn updated only on new override feedback."
+    present_only_no_bspline:
+      description: "Actual occupant_count only; no occupancy prediction."
+    bspline_dynamic_comfort:
+      description: "Optional dynamic-comfort extension using B-spline occupancy/preference models."
+

@@ -1,0 +1,13 @@
+dataset: annex96_ce1_vt_neighborhood
+building: resstock-amy2018-2021-release-1-247942
+schema_path: data/datasets/annex96_ce1_vt_neighborhood/schema.json
+dataset_dir: data/datasets/annex96_ce1_vt_neighborhood
+train_period:
+  name: january
+  start_time_step: 0
+  end_time_step: 743
+test_period:
+  name: february
+  start_time_step: 744
+  end_time_step: 1415
+random_seed: 49
