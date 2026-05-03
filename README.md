@@ -17,14 +17,16 @@ The controller comparison is organized around this matrix:
 
 | Controller | `no_occupant` | `occupant_present` | `occupant_present_peak_flattening` |
 |---|---:|---:|---:|
-| RBC | planned | planned | optional |
 | MPC | in progress | in progress | planned |
 | RL | in progress | in progress | planned |
 | RLMPC / Gnu-RL | in progress | in progress | planned |
 
-The cleaned name for the MPC line of work is:
+The cleaned MPC line of work is:
 
 **Occupant-Adaptive RC-MPC with B-spline Dynamic Comfort Preferences**
+
+The MPC pipeline fits the building RC model from January data with ridge
+regression, then uses that fitted model inside the February MPC rollouts.
 
 See [`docs/mpc_cleanup_plan.md`](docs/mpc_cleanup_plan.md) for the migration map
 from `notebooks/my_mpc.ipynb` into the new structure.
@@ -40,6 +42,10 @@ Its pipeline is:
 2. freeze the learned dynamics,
 3. optimize online cost parameters in February,
 4. add occupant-specific persistent `T_dyn` comfort references for occupant experiments.
+
+The SAC track follows a MERLIN-style jump-start: January begins with a PI
+temperature controller that fills the replay buffer, then SAC takes over for
+online learning and deterministic February evaluation.
 
 ## Instructions (December 12, 2025)
 

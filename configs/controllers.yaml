@@ -1,6 +1,4 @@
 controllers:
-  rbc:
-    status: baseline
   mpc:
     status: in_progress
     name: Occupant-Adaptive RC-MPC
@@ -11,4 +9,3 @@ controllers:
     aliases:
       - Gnu-RL
       - RLMPC
-
