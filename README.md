@@ -3,8 +3,7 @@
 ## Controller Experiment Structure
 
 This workspace now separates the occupant-adaptive control work from scratch
-notebooks, following the reproducible pattern used by MERLIN-style experiment
-repos:
+notebooks, following a reproducible experiment-pipeline pattern:
 
 - `configs/`: building, controller, and scenario definitions.
 - `src/`: reusable environment, model, occupant, controller, evaluation, and plotting code.
