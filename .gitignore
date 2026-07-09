@@ -216,6 +216,11 @@ citylearn/building_edited.py
 data/extra_schemas/
 outputs/
 
+# Local thesis/export artifacts. Keep these out of GitHub.
+IEEE_Conference_Template__1_*/
+IEEE_Conference_Template__1_*.zip
+overleaf_thesis_package/
+overleaf_thesis_package.zip
+
 ## Ignore workflows  ---
 .github/workflows/
-
