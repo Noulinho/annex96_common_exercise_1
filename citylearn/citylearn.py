@@ -897,6 +897,8 @@ class CityLearnEnv(Environment, Env):
 
         self.next_time_step()
         actions = self._parse_actions(actions)
+        if hasattr(self.reward_function, 'set_current_actions'):
+            self.reward_function.set_current_actions(actions, self.buildings)
 
         for building, building_actions in zip(self.buildings, actions):
             building.apply_actions(**building_actions)

@@ -64,7 +64,6 @@ class Occupant:
             self.override_timer = max(self.duration - 1, 0)
             self.override_setpoint = scheduled_setpoint - self.override_delta(p_dec)
         else:
-            self.override_setpoint = scheduled_setpoint
+            self.override_setpoint = None
 
-        return float(self.override_setpoint)
-
+        return float(scheduled_setpoint if self.override_setpoint is None else self.override_setpoint)

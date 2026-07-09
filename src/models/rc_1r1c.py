@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -59,3 +61,7 @@ class RC1R1CModel:
 
         return predicted
 
+
+def load_1r1c_model(path: str | Path) -> RC1R1CModel:
+    data = json.loads(Path(path).read_text())
+    return RC1R1CModel(RC1R1CParams(**data))

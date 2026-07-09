@@ -429,7 +429,13 @@ def plot_simulation_summary(envs: dict[str, CityLearnEnv]):
 
 
 
-def plot_comfort(env: CityLearnEnv, building_idx: int = 0):
+def plot_comfort(
+    env: CityLearnEnv,
+    building_idx: int = 0,
+    T_low: float = 20.0,
+    T_high: float = 24.0,
+    title: str = None
+):
     b = env.unwrapped.buildings[building_idx]
 
     # Indoor temperature
@@ -437,10 +443,10 @@ def plot_comfort(env: CityLearnEnv, building_idx: int = 0):
 
     # Setpoint (heating == cooling in this dataset)
     T_sp = np.array(b.indoor_dry_bulb_temperature_heating_set_point)
-
-    # Fixed comfort band
-    T_low = 20.0
-    T_high = 24.0
+    # if hasattr(env, "effective_setpoints") and len(env.effective_setpoints) > 0:
+    #     T_sp = np.array(env.effective_setpoints)
+    # else:
+    #     T_sp = np.array(b.indoor_dry_bulb_temperature_heating_set_point)
 
     timesteps = np.arange(len(T_in))
 
@@ -455,12 +461,12 @@ def plot_comfort(env: CityLearnEnv, building_idx: int = 0):
         T_high,
         color='gray',
         alpha=0.2,
-        label='Comfort band (20–24 °C)'
+        label=f'Comfort band ({T_low:.0f}-{T_high:.0f} °C)'
     )
 
     plt.xlabel('Time step')
     plt.ylabel('Temperature [°C]')
-    plt.title(b.name)
+    plt.title(title or b.name)
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -616,4 +622,3 @@ def run_env(env, agent):
         obs, reward, terminated, truncated, info = env.step(actions)
 
     return env
-

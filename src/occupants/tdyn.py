@@ -12,9 +12,49 @@ class TDynConfig:
     init_mode: str = "schedule"
     delta_up: float = 0.5
     delta_down: float = 0.5
-    drift_to_pref: float = 0.0
+    drift_to_pref: float = 0.05
     lower_bound: float = 18.0
     upper_bound: float = 26.0
+    anchor_feedback_to_pref: bool = True
+
+
+def update_tdyn_reference(
+    value: float,
+    feedback: int | float,
+    *,
+    preferred_temperature: float | None = None,
+    config: TDynConfig = TDynConfig(),
+) -> float:
+    """Update the dynamic comfort reference from occupant feedback.
+
+    Zhang-style OITL control uses a dynamic reference temperature that responds
+    to real-time feedback while remaining tied to the personalized preference.
+    When a fitted preference is available, feedback nudges T_dyn toward that
+    preference instead of allowing repeated one-sided feedback to saturate at a
+    global comfort bound.
+    """
+
+    value = float(value)
+    pref = None if preferred_temperature is None else float(preferred_temperature)
+    feedback = float(feedback)
+
+    if config.anchor_feedback_to_pref and pref is not None:
+        if feedback > 0.0 and value < pref:
+            value = min(value + float(config.delta_up), pref)
+        elif feedback < 0.0 and value > pref:
+            value = max(value - float(config.delta_down), pref)
+
+        if config.drift_to_pref > 0.0:
+            value = value + float(config.drift_to_pref) * (pref - value)
+    else:
+        if config.drift_to_pref > 0.0 and pref is not None:
+            value = value + float(config.drift_to_pref) * (pref - value)
+        if feedback > 0.0:
+            value += float(config.delta_up)
+        elif feedback < 0.0:
+            value -= float(config.delta_down)
+
+    return float(np.clip(value, config.lower_bound, config.upper_bound))
 
 
 def detect_override_starts_from_effective_setpoint(
@@ -72,12 +112,12 @@ def build_tdyn_from_override_starts(
     trace = np.zeros(n, dtype=np.float32)
     trace[0] = np.clip(tdyn, config.lower_bound, config.upper_bound)
     for t in range(1, n):
-        tdyn = float(trace[t - 1])
-        if starts[t] > 0:
-            tdyn += config.delta_up
-        elif starts[t] < 0:
-            tdyn -= config.delta_down
-        trace[t] = np.clip(tdyn, config.lower_bound, config.upper_bound)
+        trace[t] = update_tdyn_reference(
+            float(trace[t - 1]),
+            starts[t],
+            preferred_temperature=preferred_temperature,
+            config=config,
+        )
 
     return trace
 
@@ -91,17 +131,10 @@ class TDynState:
         self.value = float(np.clip(initial_value, config.lower_bound, config.upper_bound))
 
     def update(self, feedback: int | float) -> float:
-        if self.preferred_temperature is not None and self.config.drift_to_pref > 0.0:
-            self.value = (
-                (1.0 - self.config.drift_to_pref) * self.value
-                + self.config.drift_to_pref * float(self.preferred_temperature)
-            )
-
-        if feedback > 0:
-            self.value += self.config.delta_up
-        elif feedback < 0:
-            self.value -= self.config.delta_down
-
-        self.value = float(np.clip(self.value, self.config.lower_bound, self.config.upper_bound))
+        self.value = update_tdyn_reference(
+            self.value,
+            feedback,
+            preferred_temperature=self.preferred_temperature,
+            config=self.config,
+        )
         return self.value
-

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
+
+from src.occupants.setpoint_schedule import (
+    active_override_steps,
+    apply_heating_override_schedule,
+    reset_future_heating_setpoints,
+)
 
 
 class OccupantEnvWrapper(gym.Wrapper):
@@ -211,6 +218,7 @@ class OccupantEnvWrapper(gym.Wrapper):
 
         building = self.env.unwrapped.buildings[0]
         self._ensure_feedback_signal(building).fill(0.0)
+        reset_future_heating_setpoints(building, building.time_step)
         self.effective_setpoints = [
             float(building.energy_simulation.indoor_dry_bulb_temperature_heating_set_point[building.time_step])
         ]
@@ -260,7 +268,12 @@ class OccupantEnvWrapper(gym.Wrapper):
         feedback_signal = self._ensure_feedback_signal(building)
         feedback_signal[self._absolute_index(building, next_ix)] = feedback
 
-        building.energy_simulation.indoor_dry_bulb_temperature_heating_set_point[next_ix] = new_setpoint
+        apply_heating_override_schedule(
+            building,
+            next_ix,
+            new_setpoint,
+            active_override_steps(self.occupant),
+        )
         obs, reward, terminated, truncated, info = self.env.step(controlled_action)
         self.effective_setpoints.append(
             float(building.energy_simulation.indoor_dry_bulb_temperature_heating_set_point[building.time_step])
@@ -343,3 +356,119 @@ class BSplineOccupancyObservationWrapper(gym.Wrapper):
     def step(self, action):
         observations, reward, terminated, truncated, info = self.env.step(action)
         return self._augment(observations), reward, terminated, truncated, info
+
+
+class RCRolloutObservationWrapper(gym.Wrapper):
+    """Append 1R1C forward-rollout features to observations.
+
+    For each building, runs the fitted 1R1C model N steps into the future under
+    u=0 (no heating) and u=1 (full heating) and appends:
+      rc_cold_deficit_{h}h  = max(0, Tsp - T_u0[h])   for each horizon h
+      rc_heat_effect_{h}h   = T_u1[h] - T_u0[h]       for each horizon h
+
+    Weather beyond the 3-hour forecast is held constant at the hour-3 value,
+    matching the approximation used by the MPC solver.
+    """
+
+    _NEEDED_OBS = (
+        "indoor_dry_bulb_temperature",
+        "indoor_dry_bulb_temperature_heating_set_point",
+        "outdoor_dry_bulb_temperature",
+        "outdoor_dry_bulb_temperature_predicted_1",
+        "outdoor_dry_bulb_temperature_predicted_2",
+        "outdoor_dry_bulb_temperature_predicted_3",
+        "direct_solar_irradiance",
+        "direct_solar_irradiance_predicted_1",
+        "direct_solar_irradiance_predicted_2",
+        "direct_solar_irradiance_predicted_3",
+    )
+
+    def __init__(self, env, *, rc_model_dir, horizons=(4, 8)):
+        super().__init__(env)
+        from src.models.rc_1r1c import load_1r1c_model
+
+        self.horizons = tuple(int(h) for h in sorted(horizons))
+        self.max_horizon = max(self.horizons)
+        rc_model_dir = Path(rc_model_dir)
+
+        self._rc_models = []
+        self._obs_indices = []
+        for i, building in enumerate(env.unwrapped.buildings):
+            short_name = building.name.split("-")[-1]
+            model_path = rc_model_dir / f"1state_rc_{short_name}_january.json"
+            self._rc_models.append(load_1r1c_model(model_path))
+            obs_names = list(env.observation_names[i])
+            self._obs_indices.append({
+                feat: obs_names.index(feat) if feat in obs_names else None
+                for feat in self._NEEDED_OBS
+            })
+
+        feature_names = (
+            [f"rc_cold_deficit_{h}h" for h in self.horizons]
+            + [f"rc_heat_effect_{h}h" for h in self.horizons]
+        )
+        n_extra = len(feature_names)
+        self.observation_names = [
+            list(names) + feature_names for names in env.observation_names
+        ]
+        self.observation_space = [
+            spaces.Box(
+                low=np.concatenate([
+                    np.asarray(space.low, dtype=np.float32),
+                    np.zeros(n_extra, dtype=np.float32),
+                ]),
+                high=np.concatenate([
+                    np.asarray(space.high, dtype=np.float32),
+                    np.full(n_extra, 50.0, dtype=np.float32),
+                ]),
+                dtype=np.float32,
+            )
+            for space in env.observation_space
+        ]
+        self.action_space = env.action_space
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self.env, name)
+
+    def _get(self, obs_arr, feat, i):
+        idx = self._obs_indices[i].get(feat)
+        return float(obs_arr[idx]) if idx is not None else 0.0
+
+    def _augment(self, observations):
+        result = []
+        for i, obs in enumerate(observations):
+            obs_arr = np.asarray(obs, dtype=np.float32)
+            tin = self._get(obs_arr, "indoor_dry_bulb_temperature", i)
+            tsp = self._get(obs_arr, "indoor_dry_bulb_temperature_heating_set_point", i)
+            t0 = self._get(obs_arr, "outdoor_dry_bulb_temperature", i)
+            t1 = self._get(obs_arr, "outdoor_dry_bulb_temperature_predicted_1", i)
+            t2 = self._get(obs_arr, "outdoor_dry_bulb_temperature_predicted_2", i)
+            t3 = self._get(obs_arr, "outdoor_dry_bulb_temperature_predicted_3", i)
+            s0 = self._get(obs_arr, "direct_solar_irradiance", i)
+            s1 = self._get(obs_arr, "direct_solar_irradiance_predicted_1", i)
+            s2 = self._get(obs_arr, "direct_solar_irradiance_predicted_2", i)
+            s3 = self._get(obs_arr, "direct_solar_irradiance_predicted_3", i)
+
+            n = self.max_horizon + 1
+            tout_seq = ([t0, t1, t2, t3] + [t3] * n)[:n]
+            solar_seq = ([s0, s1, s2, s3] + [s3] * n)[:n]
+
+            model = self._rc_models[i]
+            t_u0 = model.rollout(tin, tout_seq, solar_seq, [0.0] * n)
+            t_u1 = model.rollout(tin, tout_seq, solar_seq, [1.0] * n)
+
+            cold_deficits = [float(np.maximum(0.0, tsp - t_u0[h])) for h in self.horizons]
+            heat_effects = [float(t_u1[h] - t_u0[h]) for h in self.horizons]
+            extra = np.array(cold_deficits + heat_effects, dtype=np.float32)
+            result.append(np.concatenate([obs_arr, extra]))
+        return result
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        return self._augment(obs), info
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return self._augment(obs), reward, terminated, truncated, info

@@ -1,0 +1,655 @@
+#!/usr/bin/env python
+"""Append robust 2R2C+Kalman multi-controller comparison to notebooks.
+
+Compares MPC / RLMPC / SAC (PI+BC+9 SAC) all using the bounded-robust 2R2C
+Kalman model against:
+  - CityLearn baseline
+  - Previous best: ce1_time_bias_guard_1c_2r2c_kalman (MPC)
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import nbformat as nbf
+import numpy as np
+import pandas as pd
+
+from src.buildings import DATASET_NAME, dataset_building_entries
+from src.district_analysis import aggregate_controller_rollouts
+from src.rewards import load_simple_v4_price_profile, time_bias_setpoint_profile
+
+
+LABEL = "ce1_robust_2r2c_kalman"
+SAC_LABEL = "ce1_robust_2r2c_kalman_bc_mpc_sac10"
+PREV_MPC_LABEL = "ce1_time_bias_guard_1c_2r2c_kalman"
+
+FIG_DIR = Path("figures") / f"{LABEL}_multi"
+ANALYSIS_DIR = Path("analysis")
+RESULTS = Path("results")
+BUILDINGS = dataset_building_entries(DATASET_NAME)
+FEB_START = 744
+
+RUNS = [
+    {
+        "key": "prev_mpc",
+        "controller": "mpc",
+        "label": PREV_MPC_LABEL,
+        "display": "MPC 2R2C+Kalman (standard fit)",
+        "comfort_slug": "prev_mpc",
+    },
+    {
+        "key": "mpc",
+        "controller": "mpc",
+        "label": LABEL,
+        "display": "MPC robust 2R2C+Kalman",
+        "comfort_slug": "mpc",
+    },
+    {
+        "key": "rlmpc",
+        "controller": "rlmpc",
+        "label": LABEL,
+        "display": "GNU-RL/RLMPC robust 2R2C+Kalman",
+        "comfort_slug": "rlmpc",
+    },
+    {
+        "key": "sac",
+        "controller": "sac_merlin",
+        "label": SAC_LABEL,
+        "display": "SAC BC+reward robust 2R2C+Kalman (PI+BC+9 SAC)",
+        "comfort_slug": "sac",
+    },
+]
+
+KPI_CASES = [
+    ("mpc", "baseline", "Baseline"),
+    *[(run["controller"], run["label"], run["display"]) for run in RUNS],
+]
+
+WEIGHTS = {
+    "comfort_weight": 0.5,
+    "comfort_track_weight": 3.0,
+    "comfort_track_scale": 2.0,
+    "comfort_cold_weight": 100.0,
+    "comfort_cold_scale": 1.5,
+    "comfort_hot_weight": 20.0,
+    "comfort_hot_scale": 2.0,
+    "guard_band": 2.0,
+    "bias_amplitude": 1.0,
+    "shift_weight": 0.0,
+    "power_scale": 5.0,
+}
+
+
+def _read(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return pd.read_csv(path)
+
+
+def _rollout_path(controller: str, building_id: str, label: str) -> Path:
+    return RESULTS / "raw" / controller / building_id / "no_occupant" / label / "rollout.csv"
+
+
+def _summary_path(controller: str) -> Path:
+    return RESULTS / "summaries" / controller / "no_occupant_summary_all_buildings.csv"
+
+
+def _building_summary_path(controller: str, building_id: str) -> Path:
+    return RESULTS / "summaries" / controller / building_id / "no_occupant" / "summary.csv"
+
+
+def _case_summary(controller: str, case: str) -> pd.DataFrame:
+    aggregate_path = _summary_path(controller)
+    aggregate_subset = pd.DataFrame()
+    if aggregate_path.exists():
+        aggregate = _read(aggregate_path)
+        aggregate_subset = aggregate[aggregate["case"] == case].copy()
+
+    per_building = []
+    for building in BUILDINGS:
+        path = _building_summary_path(controller, building["result_id"])
+        if not path.exists():
+            continue
+        summary = _read(path)
+        subset = summary[summary["case"] == case].copy()
+        if not subset.empty:
+            per_building.append(subset)
+
+    if per_building:
+        data = pd.concat(per_building, ignore_index=True)
+        if "building_id" in data.columns:
+            data = data.drop_duplicates(subset=["building_id", "case"], keep="last")
+        return data
+    return aggregate_subset
+
+
+def _load_rollouts(controller: str, label: str) -> dict[str, pd.DataFrame]:
+    return {
+        building["result_id"]: _read(_rollout_path(controller, building["result_id"], label))
+        for building in BUILDINGS
+    }
+
+
+def _setpoint(data: pd.DataFrame) -> np.ndarray:
+    for column in ("scheduled_setpoint", "baseline_setpoint", "effective_setpoint", "tmin"):
+        if column in data.columns:
+            return pd.to_numeric(data[column], errors="coerce").to_numpy(dtype=float)
+    raise ValueError("Rollout has no setpoint-like column.")
+
+
+def _time_step(data: pd.DataFrame) -> np.ndarray:
+    if "time_step" in data.columns:
+        return pd.to_numeric(data["time_step"], errors="coerce").fillna(0).to_numpy(dtype=int)
+    return np.arange(len(data), dtype=int)
+
+
+def _heating(data: pd.DataFrame) -> np.ndarray:
+    if "heating_electricity_consumption" in data.columns:
+        return np.maximum(pd.to_numeric(data["heating_electricity_consumption"], errors="coerce").fillna(0.0), 0.0).to_numpy(dtype=float)
+    return np.maximum(pd.to_numeric(data["action"], errors="coerce").fillna(0.0), 0.0).to_numpy(dtype=float)
+
+
+def _bias_and_stress(n: int) -> tuple[np.ndarray, np.ndarray]:
+    bias = np.asarray(
+        time_bias_setpoint_profile(
+            simulation_start=FEB_START,
+            simulation_end=FEB_START + n - 1,
+            amplitude=WEIGHTS["bias_amplitude"],
+        ),
+        dtype=float,
+    )
+    stress = np.asarray(load_simple_v4_price_profile(simulation_start=FEB_START, exp_beta=2.0), dtype=float)
+    if stress.size < n:
+        stress = np.resize(stress, n)
+    return bias[:n], stress[:n]
+
+
+def _controller_kpis() -> pd.DataFrame:
+    frames = []
+    for controller, case, display in KPI_CASES:
+        subset = _case_summary(controller, case)
+        if subset.empty:
+            continue
+        subset = subset.copy()
+        subset["controller"] = display
+        frames.append(subset)
+    data = pd.concat(frames, ignore_index=True)
+    data["discomfort_%"] = 100.0 * pd.to_numeric(data["discomfort_proportion"], errors="coerce")
+    data["cold_%"] = 100.0 * pd.to_numeric(data["discomfort_cold_proportion"], errors="coerce")
+    data["hot_%"] = 100.0 * pd.to_numeric(data["discomfort_hot_proportion"], errors="coerce")
+    columns = ["electricity_consumption_total", "discomfort_%", "cold_%", "hot_%", "kelvin_hours", "daily_peak_average"]
+    if "ramping_average" in data.columns:
+        columns.append("ramping_average")
+    out = data.groupby("controller", as_index=False)[columns].mean()
+    order = {display: i for i, (_, _, display) in enumerate(KPI_CASES)}
+    out["_order"] = out["controller"].map(order)
+    return out.sort_values("_order").drop(columns="_order")
+
+
+def _baseline_district() -> pd.DataFrame:
+    data = _read(RESULTS / "raw" / "citylearn_baseline" / "no_occupant" / "baseline" / "district_rollout.csv")
+    n = len(data)
+    return pd.DataFrame(
+        {
+            "time_step": np.arange(n, dtype=int),
+            "load": data["net_electricity_consumption"].to_numpy(dtype=float),
+            "target": data["district_target"].to_numpy(dtype=float),
+            "controller": "CityLearn baseline",
+        }
+    )
+
+
+def _district_frame(run: dict) -> pd.DataFrame:
+    frame, missing = aggregate_controller_rollouts(controller=run["controller"], case=run["label"], buildings=BUILDINGS)
+    if missing:
+        raise FileNotFoundError(f"Missing {run['display']} rollouts: {missing[:3]}")
+    baseline = _baseline_district()
+    n = min(len(frame), len(baseline))
+    return pd.DataFrame(
+        {
+            "time_step": frame["time_step"].to_numpy(dtype=int)[:n],
+            "load": frame["net_electricity_consumption"].to_numpy(dtype=float)[:n],
+            "target": baseline["target"].to_numpy(dtype=float)[:n],
+            "controller": run["display"],
+        }
+    )
+
+
+def _district_kpis(district_frames: list[pd.DataFrame]) -> pd.DataFrame:
+    rows = []
+    baseline = district_frames[0]
+    base_load = baseline["load"].to_numpy(dtype=float)
+    base_total = max(float(np.sum(base_load)), 1e-9)
+    base_peak = max(float(np.max(base_load)), 1e-9)
+    base_ramp = max(float(np.sum(np.abs(np.diff(base_load)))), 1e-9)
+    for frame in district_frames:
+        load = frame["load"].to_numpy(dtype=float)
+        target = frame["target"].to_numpy(dtype=float)
+        n = min(len(load), len(target))
+        load, target = load[:n], target[:n]
+        hourly = pd.DataFrame({"load": load, "hour": np.arange(n) % 24}).groupby("hour")["load"].mean()
+        rows.append(
+            {
+                "controller": frame["controller"].iloc[0],
+                "total_kwh": float(np.sum(load)),
+                "total_vs_citylearn": float(np.sum(load) / base_total),
+                "peak_kwh": float(np.max(load)),
+                "peak_vs_citylearn": float(np.max(load) / base_peak),
+                "daily_profile_peak_kwh": float(hourly.max()),
+                "daily_profile_peak_hour": int(hourly.idxmax()),
+                "ramping_abs_kwh": float(np.sum(np.abs(np.diff(load)))),
+                "ramping_vs_citylearn": float(np.sum(np.abs(np.diff(load))) / base_ramp),
+                "target_rmse_kwh": float(np.sqrt(np.mean((load - target) ** 2))),
+                "above_target_kwh": float(np.sum(np.maximum(load - target, 0.0))),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _term_diagnostics(run: dict, rollouts: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    rows = []
+    hourly_rows = []
+    display = run["display"]
+    for building in BUILDINGS:
+        data = rollouts[building["result_id"]]
+        tin = pd.to_numeric(data["indoor_temperature"], errors="coerce").to_numpy(dtype=float)
+        tsp = _setpoint(data)
+        heat = _heating(data)
+        time_step = _time_step(data)
+        n = min(len(tin), len(tsp), len(heat), len(time_step))
+        tin, tsp, heat, time_step = tin[:n], tsp[:n], heat[:n], time_step[:n]
+        bias, stress = _bias_and_stress(n)
+        tref = tsp + bias
+        cold_guard = np.maximum(tsp - WEIGHTS["guard_band"] - tin, 0.0)
+        hot_guard = np.maximum(tin - tsp - WEIGHTS["guard_band"], 0.0)
+        track = WEIGHTS["comfort_weight"] * WEIGHTS["comfort_track_weight"] * ((tin - tref) / WEIGHTS["comfort_track_scale"]) ** 2
+        cold = WEIGHTS["comfort_weight"] * WEIGHTS["comfort_cold_weight"] * (cold_guard / WEIGHTS["comfort_cold_scale"]) ** 2
+        hot = WEIGHTS["comfort_weight"] * WEIGHTS["comfort_hot_weight"] * (hot_guard / WEIGHTS["comfort_hot_scale"]) ** 2
+        shift = WEIGHTS["shift_weight"] * stress * heat / WEIGHTS["power_scale"]
+        stage = track + cold + hot + shift
+        guard_violation = (cold_guard > 0.0) | (hot_guard > 0.0)
+        for term, values in [
+            ("tracking_target", track),
+            ("guard_cold", cold),
+            ("guard_hot", hot),
+            ("time_weighted_heat", shift),
+            ("stage_cost", stage),
+        ]:
+            rows.append({"controller": display, "building": building["display"], "term": term,
+                         "mean": float(np.nanmean(values)), "max": float(np.nanmax(values))})
+        rows.append({"controller": display, "building": building["display"], "term": "mae_to_true_tsp_c",
+                     "mean": float(np.nanmean(np.abs(tin - tsp))), "max": float(np.nanmax(np.abs(tin - tsp)))})
+        rows.append({"controller": display, "building": building["display"], "term": "mae_to_biased_tref_c",
+                     "mean": float(np.nanmean(np.abs(tin - tref))), "max": float(np.nanmax(np.abs(tin - tref)))})
+        rows.append({"controller": display, "building": building["display"], "term": "guard_violation_%",
+                     "mean": float(100.0 * np.nanmean(guard_violation)), "max": float(100.0 * np.nanmax(guard_violation))})
+        hourly_rows.append(pd.DataFrame({
+            "controller": display,
+            "hour": (time_step + FEB_START) % 24,
+            "tin_minus_tsp": tin - tsp,
+            "bias": bias,
+            "heat": heat,
+            "guard_violation": guard_violation.astype(float),
+        }))
+    return pd.DataFrame(rows), pd.concat(hourly_rows, ignore_index=True)
+
+
+def _make_comfort_grid(run: dict, rollouts: dict[str, pd.DataFrame]) -> Path:
+    display = run["display"]
+    fig, axes = plt.subplots(5, 5, figsize=(22, 15), sharex=True, sharey=True)
+    axes = axes.ravel()
+    for ax, building in zip(axes, BUILDINGS):
+        data = rollouts[building["result_id"]]
+        time_step = _time_step(data)
+        tin = pd.to_numeric(data["indoor_temperature"], errors="coerce").to_numpy(dtype=float)
+        tsp = _setpoint(data)
+        n = min(len(time_step), len(tin), len(tsp))
+        time_step, tin, tsp = time_step[:n], tin[:n], tsp[:n]
+        bias, _ = _bias_and_stress(n)
+        ax.plot(time_step, tin, lw=0.75, color="steelblue", label="T_in")
+        ax.plot(time_step, tsp, lw=0.65, ls="--", color="black", label="Tsp")
+        ax.plot(time_step, tsp + bias, lw=0.65, ls=":", color="tab:orange", label="Tsp+bias")
+        ax.fill_between(time_step, tsp - WEIGHTS["guard_band"], tsp + WEIGHTS["guard_band"], alpha=0.10, color="green")
+        ax.set_title(building["display"], fontsize=8)
+        ax.set_ylim(14, 26)
+        ax.grid(alpha=0.2)
+    for ax in axes[len(BUILDINGS):]:
+        ax.axis("off")
+    axes[0].legend(fontsize=7)
+    fig.suptitle(f"{display} - time-biased target with true-setpoint +/-2 C guard", fontsize=12)
+    fig.tight_layout()
+    path = FIG_DIR / f"{run['comfort_slug']}_comfort_all25.png"
+    fig.savefig(path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def _make_district_plots(frames: list[pd.DataFrame]) -> tuple[Path, Path]:
+    combined = pd.concat(frames, ignore_index=True)
+    target = frames[0][["time_step", "target"]]
+    fig, ax = plt.subplots(figsize=(15, 5))
+    for name, group in combined.groupby("controller", sort=False):
+        ax.plot(group["time_step"], group["load"], lw=1.0, label=name)
+    ax.plot(target["time_step"], target["target"], color="black", lw=1.0, ls="--", label="CE1 district target")
+    ax.set_title(f"Robust 2R2C+Kalman district load - {LABEL}")
+    ax.set_xlabel("February time step")
+    ax.set_ylabel("District electricity [kWh]")
+    ax.grid(alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    load_path = FIG_DIR / "district_load_timeseries_multi.png"
+    fig.savefig(load_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+    daily = combined.assign(hour=combined["time_step"] % 24).groupby(["controller", "hour"], as_index=False)["load"].mean()
+    target_daily = target.assign(hour=target["time_step"] % 24).groupby("hour", as_index=False)["target"].mean()
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for name, group in daily.groupby("controller", sort=False):
+        ax.plot(group["hour"], group["load"], marker="o", lw=1.4, label=name)
+    ax.plot(target_daily["hour"], target_daily["target"], color="black", marker="o", lw=1.1, ls="--", label="CE1 district target")
+    ax.set_title("Mean hourly district load - February")
+    ax.set_xlabel("Hour of day")
+    ax.set_ylabel("Mean district electricity [kWh]")
+    ax.set_xticks(range(24))
+    ax.grid(alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    daily_path = FIG_DIR / "district_mean_daily_profile_multi.png"
+    fig.savefig(daily_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return load_path, daily_path
+
+
+def _make_term_plots(term_summary: pd.DataFrame, hourly: pd.DataFrame) -> tuple[Path, Path]:
+    plot_terms = ["tracking_target", "guard_cold", "guard_hot", "time_weighted_heat", "stage_cost"]
+    plot_data = term_summary[term_summary["term"].isin(plot_terms)].copy()
+    pivot = plot_data.pivot(index="term", columns="controller", values="mean")
+    fig, ax = plt.subplots(figsize=(12, 5))
+    pivot.loc[[t for t in plot_terms if t in pivot.index]].plot(kind="bar", ax=ax)
+    ax.set_title("Mean weighted stage-cost terms by controller")
+    ax.set_ylabel("Mean weighted term value")
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    terms_path = FIG_DIR / "weighted_terms_by_controller.png"
+    fig.savefig(terms_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+    hourly_mean = hourly.groupby(["controller", "hour"], as_index=False).mean(numeric_only=True)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
+    for name, group in hourly_mean.groupby("controller", sort=False):
+        axes[0].plot(group["hour"], group["tin_minus_tsp"], marker="o", lw=1.2, label=name)
+        axes[1].plot(group["hour"], group["heat"], marker="o", lw=1.2, label=name)
+        axes[2].plot(group["hour"], 100.0 * group["guard_violation"], marker="o", lw=1.2, label=name)
+    axes[0].axhline(0.0, color="black", lw=0.8)
+    axes[0].set_ylabel("Tin - Tsp [C]")
+    axes[1].set_ylabel("Heating electricity [kWh]")
+    axes[2].set_ylabel("Guard violation [%]")
+    axes[2].set_xlabel("Hour of day")
+    for ax in axes:
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8)
+    fig.suptitle("Hourly response to +1/-1 C time-bias schedule — robust 2R2C+Kalman")
+    fig.tight_layout()
+    response_path = FIG_DIR / "hourly_bias_response_multi.png"
+    fig.savefig(response_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return terms_path, response_path
+
+
+def _case_dir(run: dict, building_id: str) -> Path:
+    return RESULTS / "raw" / run["controller"] / building_id / "no_occupant" / run["label"]
+
+
+def _load_bc_losses(runs: list[dict]) -> pd.DataFrame:
+    frames = []
+    for run in runs:
+        for building in BUILDINGS:
+            path = _case_dir(run, building["result_id"]) / "bc_training_losses.csv"
+            if not path.exists():
+                continue
+            data = _read(path)
+            data["controller"] = run["display"]
+            data["building"] = building["display"]
+            frames.append(data)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _load_sac_losses(runs: list[dict]) -> pd.DataFrame:
+    frames = []
+    for run in runs:
+        for building in BUILDINGS:
+            path = _case_dir(run, building["result_id"]) / "sac_training_losses.csv"
+            if not path.exists():
+                continue
+            data = _read(path)
+            data["controller"] = run["display"]
+            data["building"] = building["display"]
+            frames.append(data)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _load_online_rewards(runs: list[dict]) -> pd.DataFrame:
+    frames = []
+    for run in runs:
+        for building in BUILDINGS:
+            path = _case_dir(run, building["result_id"]) / "online_training_rollout.csv"
+            if not path.exists():
+                continue
+            data = _read(path)
+            data["controller"] = run["display"]
+            data["building"] = building["display"]
+            frames.append(data)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def _make_training_plots(bc_losses, sac_losses, online_rewards):
+    paths: list[Path] = []
+    bc_summary = pd.DataFrame()
+    sac_summary = pd.DataFrame()
+    reward_summary = pd.DataFrame()
+    exploration_summary = pd.DataFrame()
+
+    if not bc_losses.empty:
+        bc_summary = bc_losses.groupby(["controller", "epoch"], as_index=False).agg(
+            bc_train_loss_mean=("bc_train_loss", "mean"),
+            bc_val_loss_mean=("bc_val_loss", "mean"),
+            bc_val_mae_mean=("bc_val_mae", "mean") if "bc_val_mae" in bc_losses else ("bc_val_loss", "mean"),
+        ).sort_values(["controller", "epoch"])
+        fig, ax = plt.subplots(figsize=(12, 5))
+        for name, group in bc_summary.groupby("controller", sort=False):
+            ax.plot(group["epoch"], group["bc_train_loss_mean"], lw=1.4, label=f"{name} train")
+            ax.plot(group["epoch"], group["bc_val_loss_mean"], lw=1.4, ls="--", label=f"{name} val")
+        ax.set_title("Behavior cloning loss over epochs")
+        ax.set_xlabel("BC epoch")
+        ax.set_ylabel("MSE(action, MPC action)")
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        path = FIG_DIR / "bc_training_losses.png"
+        fig.savefig(path, dpi=140, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+
+    if not sac_losses.empty:
+        loss_columns = ["soft_q1_loss", "soft_q2_loss", "policy_loss", "alpha_loss", "alpha",
+                        "log_pi_mean", "q_new_actions_mean", "reward_batch_mean"]
+        available = [col for col in loss_columns if col in sac_losses.columns]
+        sac_summary = sac_losses.groupby(["controller", "episode"], as_index=False)[available].agg(["mean", "max"])
+        sac_summary.columns = ["_".join(col).strip("_") if isinstance(col, tuple) else col
+                                for col in sac_summary.columns.to_flat_index()]
+        fig, axes = plt.subplots(len(available), 1, figsize=(12, 3.3 * len(available)), sharex=True)
+        if len(available) == 1:
+            axes = [axes]
+        for ax, col in zip(axes, available):
+            for name, group in sac_summary.groupby("controller", sort=False):
+                ax.plot(group["episode"], group[f"{col}_mean"], marker="o", lw=1.2, label=f"{name} mean")
+            ax.set_ylabel(col)
+            ax.grid(alpha=0.25)
+            ax.legend(fontsize=8)
+        axes[-1].set_xlabel("Training episode")
+        fig.suptitle("SAC critic/policy losses during reward training")
+        fig.tight_layout()
+        path = FIG_DIR / "sac_training_losses.png"
+        fig.savefig(path, dpi=140, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+
+    if not online_rewards.empty:
+        episode_reward = (
+            online_rewards.groupby(["controller", "building", "episode"], as_index=False)["reward"].sum()
+            .groupby(["controller", "episode"], as_index=False)
+            .agg(reward_sum_mean=("reward", "mean"), reward_sum_max=("reward", "max"), reward_sum_min=("reward", "min"))
+        )
+        reward_summary = episode_reward.copy()
+        fig, ax = plt.subplots(figsize=(12, 5))
+        for name, group in episode_reward.groupby("controller", sort=False):
+            ax.plot(group["episode"], group["reward_sum_mean"], marker="o", lw=1.4, label=f"{name} mean")
+            ax.fill_between(group["episode"], group["reward_sum_min"], group["reward_sum_max"], alpha=0.12)
+        ax.set_title("Online training reward by episode")
+        ax.set_xlabel("Training episode")
+        ax.set_ylabel("Episode reward sum")
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        path = FIG_DIR / "online_training_rewards.png"
+        fig.savefig(path, dpi=140, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+
+    return paths, bc_summary, sac_summary, reward_summary, exploration_summary
+
+
+def _markdown_table(df: pd.DataFrame, digits: int = 4) -> str:
+    data = df.copy()
+    for column in data.columns:
+        if pd.api.types.is_numeric_dtype(data[column]):
+            data[column] = data[column].map(lambda x: "" if pd.isna(x) else f"{x:.{digits}f}")
+    headers = list(data.columns)
+    rows = [headers] + data.astype(str).values.tolist()
+    widths = [max(len(str(row[i])) for row in rows) for i in range(len(headers))]
+    def fmt(row):
+        return "| " + " | ".join(str(row[i]).ljust(widths[i]) for i in range(len(headers))) + " |"
+    return "\n".join([fmt(headers), "| " + " | ".join("-" * w for w in widths) + " |",
+                      *[fmt(row) for row in rows[1:]]])
+
+
+def _append_once(path: Path, marker: str, cells: list) -> None:
+    notebook = nbf.read(path, as_version=4)
+    for index, cell in enumerate(notebook.cells):
+        if marker in str(cell.get("source", "")):
+            notebook.cells[index:index + len(cells)] = cells
+            nbf.write(notebook, path)
+            print(f"Updated existing {marker} section in {path}")
+            return
+    notebook.cells.extend(cells)
+    nbf.write(notebook, path)
+    print(f"Appended '{marker}' to {path}")
+
+
+def main() -> None:
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
+
+    rollouts = {run["key"]: _load_rollouts(run["controller"], run["label"]) for run in RUNS}
+    kpis = _controller_kpis()
+    kpis.to_csv(ANALYSIS_DIR / f"{LABEL}_multi_controller_kpis.csv", index=False)
+
+    district_frames = [_baseline_district(), *[_district_frame(run) for run in RUNS]]
+    district_kpis = _district_kpis(district_frames)
+    district_kpis.to_csv(ANALYSIS_DIR / f"{LABEL}_multi_district_kpis.csv", index=False)
+    district_load_path, district_daily_path = _make_district_plots(district_frames)
+
+    comfort_paths = {run["key"]: _make_comfort_grid(run, rollouts[run["key"]]) for run in RUNS}
+
+    term_frames, hourly_frames = [], []
+    for run in RUNS:
+        terms, hourly = _term_diagnostics(run, rollouts[run["key"]])
+        term_frames.append(terms)
+        hourly_frames.append(hourly)
+    terms_by_building = pd.concat(term_frames, ignore_index=True)
+    hourly_response = pd.concat(hourly_frames, ignore_index=True)
+    terms_by_building.to_csv(ANALYSIS_DIR / f"{LABEL}_multi_term_diagnostics_by_building.csv", index=False)
+    term_summary = (
+        terms_by_building.groupby(["controller", "term"], as_index=False)
+        .agg(mean=("mean", "mean"), max=("max", "max"))
+        .sort_values(["controller", "term"])
+    )
+    term_summary.to_csv(ANALYSIS_DIR / f"{LABEL}_multi_term_diagnostics.csv", index=False)
+    terms_path, response_path = _make_term_plots(term_summary, hourly_response)
+
+    bc_losses = _load_bc_losses(RUNS)
+    sac_losses = _load_sac_losses(RUNS)
+    online_rewards = _load_online_rewards(RUNS)
+    training_paths, bc_summary, sac_loss_summary, reward_summary, exploration_summary = _make_training_plots(
+        bc_losses, sac_losses, online_rewards)
+
+    overview_md = f"""## CE1 Robust 2R2C+Kalman — MPC / RLMPC / SAC comparison
+
+Run labels: `{LABEL}` (MPC, RLMPC), `{SAC_LABEL}` (SAC). Reference: `{PREV_MPC_LABEL}`.
+
+RC model: **bounded-robust 2R2C+Kalman** (physical bounds on b_sol∈[-0.001,0.03], b_heat∈[0,80], b0∈[-5,5]; soft-L1 trajectory loss). Compare to standard `trajectory_minimize_fixed` which leaves those three parameters unbounded.
+
+Cost/reward (energy-weight=0, pure comfort + time-bias shaping):
+
+`J_k = 0.5 * [3*((Tin-(Tsp+bias))/2)^2 + 100*(cold_guard/1.5)^2 + 20*(hot_guard/2)^2]`
+
+`bias = +1 C` in preheat windows, `-1 C` in reduce windows. Cold/hot guards measured from true setpoint ± 2 C.
+
+SAC: MERLIN-style (1 PI episode → BC from MPC → 9 SAC reward episodes), January training, February deployment.
+
+Mean building KPIs:
+
+{_markdown_table(kpis)}
+
+District aggregate KPIs:
+
+{_markdown_table(district_kpis)}
+
+Weighted term diagnostics:
+
+{_markdown_table(term_summary)}
+"""
+    if not bc_summary.empty:
+        overview_md += f"\nBC training loss (final epoch):\n\n{_markdown_table(bc_summary.groupby('controller', as_index=False).tail(1))}\n"
+    if not reward_summary.empty:
+        overview_md += f"\nOnline reward by episode:\n\n{_markdown_table(reward_summary.tail(20))}\n"
+
+    marker = f"## CE1 Robust 2R2C+Kalman — `{LABEL}`"
+    cells = [nbf.v4.new_markdown_cell(overview_md)]
+
+    for run in RUNS:
+        cells.append(nbf.v4.new_markdown_cell(f"### {run['display']}"))
+        cells.append(nbf.v4.new_markdown_cell(
+            f"![Comfort grid](../{comfort_paths[run['key']].as_posix()})"
+        ))
+
+    cells.append(nbf.v4.new_markdown_cell(
+        f"### District load\n"
+        f"![District timeseries](../{district_load_path.as_posix()})\n\n"
+        f"![Daily profile](../{district_daily_path.as_posix()})"
+    ))
+    cells.append(nbf.v4.new_markdown_cell(
+        f"### Reward terms\n"
+        f"![Term weights](../{terms_path.as_posix()})\n\n"
+        f"![Hourly response](../{response_path.as_posix()})"
+    ))
+    for path in training_paths:
+        cells.append(nbf.v4.new_markdown_cell(f"![Training](../{path.as_posix()})"))
+
+    # Append to both MPC and SAC notebooks
+    for nb_name in ("02_mpc_results.ipynb", "08_sac_results.ipynb"):
+        nb_path = ANALYSIS_DIR / nb_name
+        if nb_path.exists():
+            _append_once(nb_path, marker, cells)
+            print(f"Appended '{marker}' to {nb_path}")
+        else:
+            print(f"Notebook not found: {nb_path}")
+
+
+if __name__ == "__main__":
+    main()

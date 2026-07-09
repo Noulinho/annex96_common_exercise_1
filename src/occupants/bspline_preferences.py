@@ -182,6 +182,19 @@ class FixedBSplineIMCOccupancyPredictor:
         expected = distributions @ self.states_
         return expected, distributions
 
+    def predict_occupied_probability(self, current_state: int, start_t: int, horizon: int):
+        """Return P(occupancy > 0) for each forecast step.
+
+        The controller needs an occupancy-presence probability for comfort
+        gating. Using expected headcount for that gate over-activates comfort
+        tracking in multi-count states.
+        """
+        distributions = self.predict_distribution(current_state, start_t, horizon)
+        if 0 in self.state_to_idx_:
+            p_empty = distributions[:, self.state_to_idx_[0]]
+            return np.clip(1.0 - p_empty, 0.0, 1.0), distributions
+        return np.ones(int(horizon), dtype=float), distributions
+
     def predict_proba(self, current_state: int, t_idx: int) -> dict[int, float]:
         row_model = self.row_models_.get(current_state)
         if row_model is None:
