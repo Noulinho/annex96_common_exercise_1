@@ -224,3 +224,28 @@ overleaf_thesis_package.zip
 
 ## Ignore workflows  ---
 .github/workflows/
+
+# Research outputs stay local; publish the curated exports under analysis/.
+/figures/
+/logs/
+/analysis/*.csv
+/analysis/*.json
+!/analysis/artifact_manifest.json
+/analysis/*.tex
+/analysis/*.pdf
+/analysis/*.aux
+/analysis/*.nav
+/analysis/*.snm
+/analysis/*.toc
+/analysis/*.out
+# Local analysis figure scratch files; curated exports live in named subfolders.
+/analysis/figures/*
+!/analysis/figures/ce1_thesis_final_results/
+!/analysis/figures/ce1_thesis_clean_load_figures/
+
+# Generated artifacts from relocated exploratory notebooks.
+/experiments/notebooks/*.pkl
+/experiments/notebooks/*.npz
+/experiments/notebooks/*.pt
+/experiments/notebooks/*.zip
+/experiments/notebooks/*.disk_backup_*.ipynb

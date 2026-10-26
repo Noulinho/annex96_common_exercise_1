@@ -1,0 +1,197 @@
+{
+  "source_run": "ce1_occ_p2s2_all_occ",
+  "publication_export": "ce1_thesis_final_results",
+  "source_notebook": "experiments/analysis/12_simple_v4_comparison.ipynb",
+  "thesis_tables": {
+    "VII": "no_occupant_mean_building_kpis",
+    "VIII": "no_occupant_selected_building_kpis",
+    "IX": "occupant_controller_mean_kpis"
+  },
+  "artifacts": [
+    {
+      "source": "analysis/ce1_thesis_final_results_building_kpis_augmented.csv",
+      "published": "analysis/data/ce1_thesis_final_results_building_kpis_augmented.csv",
+      "sha256": "d7a044b909da7a38b3a2fcf354019dcc1811f7cc64c08a4e2954847ace94aff9"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_district_kpis_augmented.csv",
+      "published": "analysis/data/ce1_thesis_final_results_district_kpis_augmented.csv",
+      "sha256": "fb841412c55bfd7f3420de1d31ace1446de011c0935398f11c0624776dd056c3"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_no_occupant_mean_building_kpis_february.csv",
+      "published": "analysis/data/ce1_thesis_final_results_no_occupant_mean_building_kpis_february.csv",
+      "sha256": "c711f382a028fc5d05e0ae0948c77649c09130a0a03b4f426dba7abdd69c57d8"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_no_occupant_mean_building_kpis_march.csv",
+      "published": "analysis/data/ce1_thesis_final_results_no_occupant_mean_building_kpis_march.csv",
+      "sha256": "733ce89c3e6f83b39b92a9a236264669d69c69dabc3479c5b5db3a6b4dedf310"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_no_occupant_selected_building_kpis_february.csv",
+      "published": "analysis/data/ce1_thesis_final_results_no_occupant_selected_building_kpis_february.csv",
+      "sha256": "c747122ec559fde812e95ee52a725e25e7e76f3e8bcc085efeedaa9661a26d7d"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_no_occupant_selected_building_kpis_march.csv",
+      "published": "analysis/data/ce1_thesis_final_results_no_occupant_selected_building_kpis_march.csv",
+      "sha256": "298886def901d74012f6ca2d2b37fc30c6508d332f29e4ac377e8693ab4ab5f6"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_occupant_controller_mean_kpis_february.csv",
+      "published": "analysis/data/ce1_thesis_final_results_occupant_controller_mean_kpis_february.csv",
+      "sha256": "dbb0cc4e6f8916c319c22c6b12e5b549cf4853918b1d8a7b230980656ca357ce"
+    },
+    {
+      "source": "analysis/ce1_thesis_final_results_occupant_controller_mean_kpis_march.csv",
+      "published": "analysis/data/ce1_thesis_final_results_occupant_controller_mean_kpis_march.csv",
+      "sha256": "0cd05a576b29ac2d7ed2bf493376e08831848e178a9e5f8742b2e0030e1187e1"
+    },
+    {
+      "source": "analysis/ce1_occ_p2s2_all_occ_override_deltas.csv",
+      "published": "analysis/data/ce1_occ_p2s2_all_occ_override_deltas.csv",
+      "sha256": "e60c16f63c28dbf09c6458e3eee087bf4b3d7c9d78324f17ee7a8111e7d427a9"
+    },
+    {
+      "source": "analysis/ce1_occ_p2s2_all_occ_gnurl_adaptive_ppo_delta_summary.csv",
+      "published": "analysis/data/ce1_occ_p2s2_all_occ_gnurl_adaptive_ppo_delta_summary.csv",
+      "sha256": "023eb1da60819c307d380f883450b309e1b2007ee6d0613a2770b2ddaa4967c8"
+    },
+    {
+      "source": "analysis/ce1_occ_p2s2_all_occ_supplementary_comfort_grid_costs_by_mode.csv",
+      "published": "analysis/data/ce1_occ_p2s2_all_occ_supplementary_comfort_grid_costs_by_mode.csv",
+      "sha256": "b24ad05fdac298cc83c2508981b171df5ad59c560216f2fa2e5e472f32208d72"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/february_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/february_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "sha256": "5273f05e28f699654ab0bfd943c1ccc0368fd8df2d762f36bcd28b1d8cf14b76"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/march_no_occupant_load_hist_with_baseline.png",
+      "published": "analysis/figures/ce1_thesis_final_results/march_no_occupant_load_hist_with_baseline.png",
+      "sha256": "998c3e3c44d591fc06f30b2ea83e774b7ad8d08f92326ed2ba37651caf1d7357"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "sha256": "7a943320a7974c5e461fe48534aaff229f1c0093a585348efb46bbf1327c3306"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/february_no_occupant_load_hist_with_baseline.png",
+      "published": "analysis/figures/ce1_thesis_final_results/february_no_occupant_load_hist_with_baseline.png",
+      "sha256": "a67de6505e64c9589be60da693605e4906ea75764ca51b5c82f3954758ecbe03"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_feb_mar.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_feb_mar.png",
+      "sha256": "b857e779efa8b5c7d0c7a5a375e2d4b1b5d9ad9b6e2f9d00986271146b12dec8"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "sha256": "492240d4f70b44e1012289969c90c6e02e498930050f9bbc5116312ae3499b79"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_mpc_occupant_selected_mean_daily.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_mpc_occupant_selected_mean_daily.png",
+      "sha256": "ba5a46637c598875cb5c3e2083f7b0430a463aa7c484fb36464fc151ac535464"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_table_viii_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/feb_mar_mpc_bspline_tdyn_table_viii_hist_by_occupant.png",
+      "sha256": "e86da9d82790574a3c91b57ee14fbc001cd571b0ac922492411c6120f0251195"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/february_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/february_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "sha256": "b0f65e82ea13906238c8d227375eeab833f4a98bf4f34b60b9657a9114caf54b"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_no_occupant_selected_controllers_mean_daily.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_no_occupant_selected_controllers_mean_daily.png",
+      "sha256": "3019a380bdf63795e0c519e92b1427e6a40f06c546ec7851b21f639a7f46a8c8"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/march_no_occupant_table_vii_histograms.png",
+      "published": "analysis/figures/ce1_thesis_final_results/march_no_occupant_table_vii_histograms.png",
+      "sha256": "621331e8b9ba3c3f93c2972f246ebf7c87371bf5adf087684395ed7ea4268593"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/february_no_occupant_comfort_hist_with_baseline.png",
+      "published": "analysis/figures/ce1_thesis_final_results/february_no_occupant_comfort_hist_with_baseline.png",
+      "sha256": "4527ff61edc0ac5570685c59cab35a0ddd3a3605dd303e9258ab3564269fda6f"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/march_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/march_mpc_bspline_tdyn_load_hist_by_occupant.png",
+      "sha256": "53d6176db4f314a2ef885148c08259fe4f0474af8569eb0c08cae26dd08f9c00"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_march.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_march.png",
+      "sha256": "48f6ccc3d9135ce6abc63cdbfec84730f9e9a6ab28bb0763b3bbf88416367a9a"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_mpc_occupant_selected_month.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_mpc_occupant_selected_month.png",
+      "sha256": "029a21ffe8b7249ba3218114eab6d1910027537dbe9b73f9aa2e763a515f58d4"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/march_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "published": "analysis/figures/ce1_thesis_final_results/march_mpc_bspline_tdyn_comfort_hist_by_occupant.png",
+      "sha256": "2ff060ea5845f6b915cf3138ac13125982224a9dedf8a33bfaf335a54b4a5f82"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_mpc_occupant_mean_hourly_load_feb_mar.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_mpc_occupant_mean_hourly_load_feb_mar.png",
+      "sha256": "8141f629c0ef36d7f1130140d12d9a799283f8daa70b055f21c2cf62e99ce3ce"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/march_no_occupant_comfort_hist_with_baseline.png",
+      "published": "analysis/figures/ce1_thesis_final_results/march_no_occupant_comfort_hist_with_baseline.png",
+      "sha256": "f163565d887cf2e66040489496442c73a7b36f45598dde2c6e47d71fbcfe9a9c"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/february_no_occupant_table_vii_histograms.png",
+      "published": "analysis/figures/ce1_thesis_final_results/february_no_occupant_table_vii_histograms.png",
+      "sha256": "22f535b8da63149523e34a7fe12392b87b2cf8bf3d8be99b006b6c7a659cc0d0"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_no_occupant_selected_controllers_month.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_no_occupant_selected_controllers_month.png",
+      "sha256": "dd19ca402da6671e5c8da79e885111986fb96065f4f2731b43b7fab17760840f"
+    },
+    {
+      "source": "figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_february.png",
+      "published": "analysis/figures/ce1_thesis_final_results/thesis_no_occupant_selected_building_kpis_february.png",
+      "sha256": "9c75addcf9971ca3ead5a9581b26b04109503f5a86da7574793a392847ab9623"
+    },
+    {
+      "source": "figures/ce1_thesis_clean_load_figures/figure_A_no_occupant_feb_mar_combined.png",
+      "published": "analysis/figures/ce1_thesis_clean_load_figures/figure_A_no_occupant_feb_mar_combined.png",
+      "sha256": "57540d1e80c1ad974c52cec333356b74cd8c45244c7ec27eb515e6029eb0b92b"
+    },
+    {
+      "source": "figures/ce1_thesis_clean_load_figures/time_bias_windows_vs_baseline.png",
+      "published": "analysis/figures/ce1_thesis_clean_load_figures/time_bias_windows_vs_baseline.png",
+      "sha256": "20a2d3eba4fce48e720374d85af81d4c30f33e33e0a0100c69c3afbbab765347"
+    },
+    {
+      "source": "figures/ce1_thesis_clean_load_figures/no_occupant_deployment_daily_kpi_normalized.png",
+      "published": "analysis/figures/ce1_thesis_clean_load_figures/no_occupant_deployment_daily_kpi_normalized.png",
+      "sha256": "cb0f5fb5cfeabafab4ac2cdc25b285f285bd93d60c68f6887696486ca96ea97f"
+    },
+    {
+      "source": "figures/ce1_thesis_clean_load_figures/figure_B_mpc_feb_occupant_impact.png",
+      "published": "analysis/figures/ce1_thesis_clean_load_figures/figure_B_mpc_feb_occupant_impact.png",
+      "sha256": "9ecb024ff29190f6d06074f92cf1493bda1fe8807e240e90762965fd241542f1"
+    },
+    {
+      "source": "figures/ce1_thesis_clean_load_figures/figure_B_mpc_mar_occupant_impact.png",
+      "published": "analysis/figures/ce1_thesis_clean_load_figures/figure_B_mpc_mar_occupant_impact.png",
+      "sha256": "e05478e7a0518388866675d6711edd8c5a155c617c152b731acae8aab741be2a"
+    }
+  ]
+}

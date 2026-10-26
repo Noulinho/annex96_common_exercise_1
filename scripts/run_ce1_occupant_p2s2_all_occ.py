@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 
-PYTHON = Path("/home/kostas/anaconda3/bin/python")
+PYTHON = Path(sys.executable)
 PREFIX = "ce1_occ_p2s2_all_occ"
 LOG_DIR = Path("logs") / PREFIX
 

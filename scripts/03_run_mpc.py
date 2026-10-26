@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run the February MPC rollout from notebooks/my_mpc.ipynb.
+"""Run the February MPC rollout from experiments/notebooks/my_mpc.ipynb.
 
 This script intentionally mirrors the working notebook cell:
 

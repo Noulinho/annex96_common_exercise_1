@@ -1,0 +1,7 @@
+# Read and rebuild the published results without the simulation stack.
+numpy<2
+pandas
+nbformat>=5
+nbclient
+ipykernel
+jupyterlab

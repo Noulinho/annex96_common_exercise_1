@@ -71,7 +71,7 @@ NOTEBOOK_MPC_OBSERVATIONS = [
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Fit the same one-state RC/COP model used in notebooks/my_mpc.ipynb. "
+            "Fit the same one-state RC/COP model used in experiments/notebooks/my_mpc.ipynb. "
             "Observation indices are resolved automatically from the CityLearn environment."
         )
     )
